@@ -9,10 +9,16 @@ src/car_rl.egg-info/top_level.txt
 src/car_rl/agents/__init__.py
 src/car_rl/agents/base.py
 src/car_rl/agents/constant.py
+src/car_rl/agents/engineered.py
 src/car_rl/apps/__init__.py
+src/car_rl/apps/benchmark_agents.py
 src/car_rl/apps/common.py
+src/car_rl/apps/eval_policy.py
+src/car_rl/apps/inspect_policy_input.py
+src/car_rl/apps/run_gym_smoke.py
 src/car_rl/apps/run_headless.py
 src/car_rl/apps/run_viz.py
+src/car_rl/apps/train_ppo.py
 src/car_rl/core/__init__.py
 src/car_rl/core/dynamics.py
 src/car_rl/core/geometry.py
@@ -21,5 +27,10 @@ src/car_rl/core/simulator.py
 src/car_rl/core/types.py
 src/car_rl/env/__init__.py
 src/car_rl/env/environment.py
+src/car_rl/env/features.py
+src/car_rl/env/gym_env.py
+src/car_rl/env/observation.py
+src/car_rl/maps/__init__.py
+src/car_rl/maps/registry.py
 src/car_rl/viz/__init__.py
 src/car_rl/viz/websocket_stream.py

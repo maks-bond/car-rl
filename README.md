@@ -39,7 +39,7 @@ Dynamics:
 
 ## Quickstart (Most Important)
 
-Use Python 3.11+ (recommended) and create a virtual environment:
+Use Python 3.11+ and create a virtual environment:
 
 ```bash
 python3 -m venv .venv
@@ -180,6 +180,89 @@ adapter = PolicyInputAdapter(observation_mode="boundary")
 obs = env.reset()
 vec = adapter.transform(obs)  # np.ndarray shape: (17,), dtype=float32
 ```
+
+## Gymnasium wrapper (vector observations)
+
+Use `CarGymEnv` when plugging directly into RL libraries that expect Gymnasium API:
+- `reset() -> (obs_vec, info)`
+- `step(action) -> (obs_vec, reward, terminated, truncated, info)`
+- `action` is `[a, delta_dot]`
+
+Smoke test:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.run_gym_smoke --map straight_corridor --observation-mode boundary --steps 30
+```
+
+Python usage:
+
+```python
+from car_rl.env.gym_env import make_car_gym_env
+from car_rl.maps.registry import get_map_path
+
+env = make_car_gym_env(str(get_map_path("straight_corridor")), observation_mode="boundary")
+obs, info = env.reset()
+obs, reward, terminated, truncated, info = env.step([1.0, 0.0])
+```
+
+## Train PPO (Stable-Baselines3)
+
+Install/update dependencies:
+
+```bash
+pip install -e .
+```
+
+Quick training run:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.train_sb3_ppo \
+  --map straight_corridor \
+  --observation-mode boundary \
+  --timesteps 50000 \
+  --eval-freq 5000 \
+  --eval-episodes 5
+```
+
+Training outputs are saved under `runs/ppo_<map>_<mode>_<timestamp>/`:
+- `config.json`
+- `checkpoints/*.zip`
+- `best_model.zip`
+- `final_model.zip`
+- `eval_history.json`
+- `final_eval.json`
+
+Evaluate a trained model:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.eval_policy \
+  --model runs/<run_name>/best_model.zip \
+  --map straight_corridor \
+  --observation-mode boundary \
+  --episodes 20
+```
+
+Suggested first test plan:
+1. Train on `straight_corridor` until success rate is near 1.0.
+2. Evaluate on `straight_corridor` to confirm stable performance.
+3. Train/evaluate on `easy_turn`, then `s_curve`.
+
+## Where PPO Is Implemented
+
+PPO optimization is provided by Stable-Baselines3, not handwritten in this repository.
+
+- Orchestration in this repo: `src/car_rl/apps/train_sb3_ppo.py`
+- SB3 PPO class (actual algorithm implementation):
+  - Docs: https://stable-baselines3.readthedocs.io/en/master/modules/ppo.html
+  - Source: https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/ppo/ppo.py
+
+Related SB3 internals worth reading:
+- On-policy base loop (rollout/update flow): https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/common/on_policy_algorithm.py
+- Rollout buffer (advantages/returns storage): https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/common/buffers.py
+
+Core PPO theory:
+- PPO paper (Schulman et al., 2017): https://arxiv.org/abs/1707.06347
+- OpenAI Spinning Up PPO explanation: https://spinningup.openai.com/en/latest/algorithms/ppo.html
 
 ## Troubleshooting
 

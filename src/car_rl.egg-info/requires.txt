@@ -1,1 +1,4 @@
+gymnasium>=0.29
+numpy>=1.24
+stable-baselines3>=2.3
 websockets>=12.0
