@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any, Dict, Optional, Tuple
 
 import gymnasium as gym
@@ -50,6 +51,7 @@ class CarGymEnv(gym.Env):
         info = {
             "observation_mode": self._observation_mode,
             "observation_dict": obs,
+            "state": asdict(self._env.simulator.state),
         }
         return vec, info
 

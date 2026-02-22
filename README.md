@@ -216,15 +216,16 @@ pip install -e .
 Quick training run:
 
 ```bash
-PYTHONPATH=src python3 -m car_rl.apps.train_sb3_ppo \
+python3 -m car_rl.apps.train_sb3_ppo \
   --map straight_corridor \
   --observation-mode boundary \
-  --timesteps 50000 \
+  --timesteps 100000 \
   --eval-freq 5000 \
-  --eval-episodes 5
+  --eval-episodes 10 \
+  --device cuda
 ```
 
-Training outputs are saved under `runs/ppo_<map>_<mode>_<timestamp>/`:
+Training outputs are saved under `runs/sb3ppo_<map>_<mode>_<timestamp>/`:
 - `config.json`
 - `checkpoints/*.zip`
 - `best_model.zip`
@@ -235,17 +236,55 @@ Training outputs are saved under `runs/ppo_<map>_<mode>_<timestamp>/`:
 Evaluate a trained model:
 
 ```bash
-PYTHONPATH=src python3 -m car_rl.apps.eval_policy \
+python3 -m car_rl.apps.eval_policy \
   --model runs/<run_name>/best_model.zip \
   --map straight_corridor \
   --observation-mode boundary \
-  --episodes 20
+  --episodes 20 \
+  --device cuda
+```
+
+TensorBoard (optional):
+
+```bash
+tensorboard --logdir runs/tb
 ```
 
 Suggested first test plan:
 1. Train on `straight_corridor` until success rate is near 1.0.
-2. Evaluate on `straight_corridor` to confirm stable performance.
+2. Evaluate `best_model.zip` (not `final_model.zip`) on `straight_corridor`.
 3. Train/evaluate on `easy_turn`, then `s_curve`.
+
+Recommended first hyperparameters:
+- `--timesteps 100000`
+- `--eval-freq 5000`
+- `--eval-episodes 10`
+- `--n-envs 1` (start simple)
+- `--device cuda` (or `cpu` if desired)
+- `--learning-rate 1e-4` if training is unstable
+
+## Visualize Trained Policy In Web UI
+
+Run the policy streamer:
+
+```bash
+python3 -m car_rl.apps.run_viz_policy \
+  --model runs/<run_name>/best_model.zip \
+  --map straight_corridor \
+  --observation-mode boundary \
+  --device cpu
+```
+
+Run static web server in another terminal:
+
+```bash
+python3 -m http.server 8080
+```
+
+Open:
+- `http://127.0.0.1:8080/web/`
+
+The same UI controls work (`Step`, `Play`, `Pause`, `Play To End`) but actions now come from the loaded SB3 policy.
 
 ## Where PPO Is Implemented
 
@@ -263,6 +302,9 @@ Related SB3 internals worth reading:
 Core PPO theory:
 - PPO paper (Schulman et al., 2017): https://arxiv.org/abs/1707.06347
 - OpenAI Spinning Up PPO explanation: https://spinningup.openai.com/en/latest/algorithms/ppo.html
+
+Practical note:
+- PPO on this task can regress late in training due to sparse rewards; use `best_model.zip` selected by periodic evaluation.
 
 ## Troubleshooting
 

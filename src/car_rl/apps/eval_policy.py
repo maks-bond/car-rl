@@ -54,6 +54,7 @@ def main() -> None:
     parser.add_argument("--observation-mode", default="boundary", choices=["state", "boundary"])
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--stochastic", action="store_true")
+    parser.add_argument("--device", default="auto", help="SB3/PyTorch device: auto, cpu, cuda, ...")
     parser.add_argument("--save-json", default="")
     args = parser.parse_args()
 
@@ -69,7 +70,7 @@ def main() -> None:
         raise FileNotFoundError(f"model file not found: {model_path}")
 
     env = make_car_gym_env(str(get_map_path(args.map)), observation_mode=args.observation_mode)
-    model = PPO.load(str(model_path))
+    model = PPO.load(str(model_path), device=args.device)
 
     metrics = evaluate(model, env, episodes=args.episodes, deterministic=not args.stochastic)
     print("summary:", metrics)

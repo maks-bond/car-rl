@@ -17,13 +17,13 @@ import argparse
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from car_rl.env.gym_env import make_car_gym_env
 from car_rl.maps.registry import get_map_path, list_maps
 
 
-def evaluate_model(model, env, episodes: int) -> Dict[str, float]:
+def evaluate_model(model, env, episodes: int, deterministic: bool) -> Dict[str, float]:
     # Deterministic policy evaluation to track learning progress and regressions.
     returns = []
     lengths = []
@@ -38,7 +38,7 @@ def evaluate_model(model, env, episodes: int) -> Dict[str, float]:
         event = None
 
         while not done:
-            action, _ = model.predict(obs, deterministic=True)
+            action, _ = model.predict(obs, deterministic=deterministic)
             obs, reward, terminated, truncated, info = env.step(action)
             ep_return += reward
             ep_len += 1
@@ -69,18 +69,29 @@ def main() -> None:
     parser.add_argument("--eval-freq", type=int, default=10_000)
     parser.add_argument("--eval-episodes", type=int, default=5)
     parser.add_argument("--checkpoint-freq", type=int, default=50_000)
+    parser.add_argument("--n-envs", type=int, default=1)
+    parser.add_argument("--device", default="auto", help="SB3/PyTorch device: auto, cpu, cuda, cuda:0, ...")
+    parser.add_argument(
+        "--eval-stochastic",
+        action="store_true",
+        help="Use stochastic policy sampling during eval (default is deterministic).",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--n-steps", type=int, default=1024)
     parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--ent-coef", type=float, default=0.0)
+    parser.add_argument("--gae-lambda", type=float, default=0.95)
+    parser.add_argument("--clip-range", type=float, default=0.2)
     parser.add_argument("--out-dir", default="runs")
+    parser.add_argument("--tensorboard-log", default="runs/tb")
     args = parser.parse_args()
 
     try:
         # PPO algorithm class, callbacks, and vectorized env wrappers are provided by SB3.
         from stable_baselines3 import PPO
-        from stable_baselines3.common.callbacks import BaseCallback, CallbackList, CheckpointCallback
+        from stable_baselines3.common.callbacks import BaseCallback, CallbackList
         from stable_baselines3.common.monitor import Monitor
         from stable_baselines3.common.vec_env import DummyVecEnv
     except ModuleNotFoundError as exc:
@@ -90,7 +101,7 @@ def main() -> None:
 
     map_path = str(get_map_path(args.map))
 
-    run_name = f"ppo_{args.map}_{args.observation_mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    run_name = f"sb3ppo_{args.map}_{args.observation_mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     run_dir = Path(args.out_dir) / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,7 +110,7 @@ def main() -> None:
         return Monitor(make_car_gym_env(map_path=map_path, observation_mode=args.observation_mode))
 
     # SB3 PPO expects a VecEnv. DummyVecEnv with one env keeps setup simple and deterministic.
-    train_env = DummyVecEnv([make_train_env])
+    train_env = DummyVecEnv([make_train_env for _ in range(max(1, args.n_envs))])
     # Separate eval env so callback evaluation does not disturb training rollout state.
     eval_env = make_car_gym_env(map_path=map_path, observation_mode=args.observation_mode)
 
@@ -119,15 +130,23 @@ def main() -> None:
             self.eval_episodes = eval_episodes
             self.out_dir = out_dir
             self.best_success = -1.0
+            self.best_return = float("-inf")
             self.history: list[dict[str, Any]] = []
+            self.last_eval_timestep = 0
 
         def _on_step(self) -> bool:
             if self.eval_freq <= 0:
                 return True
-            if self.n_calls % self.eval_freq != 0:
+            if (self.num_timesteps - self.last_eval_timestep) < self.eval_freq:
                 return True
+            self.last_eval_timestep = int(self.num_timesteps)
 
-            metrics = evaluate_model(self.model, self.eval_env, self.eval_episodes)
+            metrics = evaluate_model(
+                self.model,
+                self.eval_env,
+                self.eval_episodes,
+                deterministic=not args.eval_stochastic,
+            )
             row = {
                 "timesteps": int(self.num_timesteps),
                 **metrics,
@@ -142,23 +161,44 @@ def main() -> None:
                     f"collision={row['collision_rate']:.2f}"
                 )
 
-            # Selection criterion is success_rate; you may swap to return depending on goals.
-            if metrics["success_rate"] > self.best_success:
+            # Primary criterion: success_rate, tie-breaker: mean_return.
+            better_success = metrics["success_rate"] > self.best_success
+            equal_success = abs(metrics["success_rate"] - self.best_success) < 1e-12
+            better_return = metrics["mean_return"] > self.best_return
+            if better_success or (equal_success and better_return):
                 self.best_success = metrics["success_rate"]
+                self.best_return = metrics["mean_return"]
                 self.model.save(str(self.out_dir / "best_model"))
                 if self.verbose:
-                    print(f"[eval] new best success_rate={self.best_success:.2f}; saved best_model.zip")
+                    print(
+                        f"[eval] new best: success={self.best_success:.2f} "
+                        f"return={self.best_return:.3f}; saved best_model.zip"
+                    )
 
             with (self.out_dir / "eval_history.json").open("w", encoding="utf-8") as f:
                 json.dump(self.history, f, indent=2)
 
             return True
 
-    checkpoint_cb = CheckpointCallback(
-        save_freq=max(1, args.checkpoint_freq),
-        save_path=str(run_dir / "checkpoints"),
-        name_prefix="ppo",
-    )
+    class TimestepsCheckpointCallback(BaseCallback):
+        def __init__(self, save_freq: int, out_dir: Path, verbose: int = 1) -> None:
+            super().__init__(verbose=verbose)
+            self.save_freq = max(1, save_freq)
+            self.out_dir = out_dir
+            self.last_save_timestep = 0
+            (self.out_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
+
+        def _on_step(self) -> bool:
+            if (self.num_timesteps - self.last_save_timestep) < self.save_freq:
+                return True
+            self.last_save_timestep = int(self.num_timesteps)
+            path = self.out_dir / "checkpoints" / f"ppo_t{self.num_timesteps}"
+            self.model.save(str(path))
+            if self.verbose:
+                print(f"[ckpt] saved {path}.zip")
+            return True
+
+    checkpoint_cb = TimestepsCheckpointCallback(save_freq=args.checkpoint_freq, out_dir=run_dir, verbose=1)
     eval_cb = EvalMetricsCallback(
         eval_env=eval_env,
         eval_freq=args.eval_freq,
@@ -180,8 +220,13 @@ def main() -> None:
         gamma=args.gamma,
         n_steps=args.n_steps,
         batch_size=args.batch_size,
+        ent_coef=args.ent_coef,
+        gae_lambda=args.gae_lambda,
+        clip_range=args.clip_range,
         policy_kwargs={"net_arch": [128, 128]},
         seed=args.seed,
+        device=args.device,
+        tensorboard_log=args.tensorboard_log,
         verbose=1,
     )
 
@@ -193,11 +238,18 @@ def main() -> None:
         "eval_freq": args.eval_freq,
         "eval_episodes": args.eval_episodes,
         "checkpoint_freq": args.checkpoint_freq,
+        "n_envs": args.n_envs,
+        "device": args.device,
+        "eval_stochastic": args.eval_stochastic,
         "seed": args.seed,
         "learning_rate": args.learning_rate,
         "gamma": args.gamma,
         "n_steps": args.n_steps,
         "batch_size": args.batch_size,
+        "ent_coef": args.ent_coef,
+        "gae_lambda": args.gae_lambda,
+        "clip_range": args.clip_range,
+        "tensorboard_log": args.tensorboard_log,
     }
     with (run_dir / "config.json").open("w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
@@ -207,11 +259,17 @@ def main() -> None:
     model.learn(total_timesteps=args.timesteps, callback=CallbackList([checkpoint_cb, eval_cb]))
     model.save(str(run_dir / "final_model"))
 
-    final_metrics = evaluate_model(model, eval_env, args.eval_episodes)
+    final_metrics = evaluate_model(
+        model,
+        eval_env,
+        args.eval_episodes,
+        deterministic=not args.eval_stochastic,
+    )
     with (run_dir / "final_eval.json").open("w", encoding="utf-8") as f:
         json.dump(final_metrics, f, indent=2)
 
     print(f"Training complete. Outputs in: {run_dir}")
+    print(f"Model device: {model.device}")
     print(f"Final eval: {final_metrics}")
 
 
