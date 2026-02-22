@@ -1,0 +1,73 @@
+# car-rl
+
+Starter project for reinforcement-learning experiments with a headless bicycle-model car simulator.
+
+## What is included
+
+- Headless simulator (`src/car_rl/core/simulator.py`)
+- Kinematic bicycle dynamics with action/state limits (`src/car_rl/core/dynamics.py`)
+- Map format and first map (`src/car_rl/maps/straight_corridor.json`)
+- RL-style env wrapper (`src/car_rl/env/environment.py`)
+- Constant action baseline agent (`src/car_rl/agents/constant.py`)
+- Live WebSocket frame stream (`src/car_rl/viz/websocket_stream.py`)
+- Minimal browser visualization (`web/index.html`)
+
+## Model definition
+
+State:
+- `x, y, yaw, v, delta`
+
+Control:
+- `a` (acceleration)
+- `delta_dot` (steering angle rate)
+
+Dynamics:
+- `x_dot = v * cos(yaw)`
+- `y_dot = v * sin(yaw)`
+- `yaw_dot = v / L * tan(delta)`
+- `v_dot = a`
+- `delta_dot = u_delta_dot`
+
+## Reward/events
+
+- Finish line crossed in forward direction: `+100` and terminate
+- Collision with wall: `-100` and terminate
+- Start line crossed backward direction: `-100` and terminate
+- Step penalty: `-0.01`
+
+## Run
+
+Install deps:
+
+```bash
+pip install -e .
+```
+
+Headless rollout:
+
+```bash
+PYTHONPATH=src python -m car_rl.apps.run_headless
+```
+
+Live stream for viz:
+
+```bash
+PYTHONPATH=src python -m car_rl.apps.run_viz
+```
+
+Open viewer in another terminal:
+
+```bash
+python -m http.server 8080
+```
+
+Then open:
+
+- `http://127.0.0.1:8080/web/`
+
+## Next steps
+
+1. Add more maps in `src/car_rl/maps/`
+2. Replace `ConstantActionAgent` with engineered policy
+3. Add Gymnasium API compatibility and train PPO/SAC
+4. Add checkpoints and dense progress rewards

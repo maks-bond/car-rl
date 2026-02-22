@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>car-rl viz</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --track: #1f2937;
+      --wall: #ef4444;
+      --car: #22d3ee;
+      --line: #f59e0b;
+      --ok: #34d399;
+    }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 10% 20%, #1e293b, var(--bg));
+      color: var(--text);
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      min-height: 100vh;
+    }
+    .panel {
+      padding: 16px;
+      background: rgba(17, 24, 39, 0.92);
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    h1 { margin: 0 0 12px; font-size: 20px; }
+    .stat { margin: 8px 0; font-size: 14px; }
+    canvas { width: 100%; height: 100%; background: var(--track); }
+    .viewport { padding: 12px; }
+  </style>
+</head>
+<body>
+  <aside class="panel">
+    <h1>car-rl simulator</h1>
+    <div class="stat" id="status">status: connecting...</div>
+    <div class="stat" id="episode">episode: -</div>
+    <div class="stat" id="step">step: -</div>
+    <div class="stat" id="reward">reward: -</div>
+    <div class="stat" id="event">event: -</div>
+    <p style="font-size: 13px; opacity: 0.85; line-height: 1.4;">
+      Start another terminal:<br />
+      <code>PYTHONPATH=src python -m car_rl.apps.run_viz</code>
+    </p>
+  </aside>
+  <main class="viewport">
+    <canvas id="sim"></canvas>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("sim");
+    const ctx = canvas.getContext("2d");
+
+    const statusEl = document.getElementById("status");
+    const episodeEl = document.getElementById("episode");
+    const stepEl = document.getElementById("step");
+    const rewardEl = document.getElementById("reward");
+    const eventEl = document.getElementById("event");
+
+    const map = {
+      walls: [
+        [[0, -2], [30, -2]],
+        [[0, 2], [30, 2]],
+        [[0, -2], [0, 2]],
+        [[30, -2], [30, 2]],
+      ],
+      start: [[0, -2], [0, 2]],
+      finish: [[30, -2], [30, 2]],
+    };
+
+    function resize() {
+      canvas.width = canvas.clientWidth * window.devicePixelRatio;
+      canvas.height = canvas.clientHeight * window.devicePixelRatio;
+      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    function worldToScreen(x, y) {
+      const pad = 40;
+      const w = canvas.clientWidth - pad * 2;
+      const h = canvas.clientHeight - pad * 2;
+      const sx = pad + (x / 30) * w;
+      const sy = pad + ((2 - y) / 4) * h;
+      return [sx, sy];
+    }
+
+    function drawLine(line, color, width = 2) {
+      const [a, b] = line;
+      const [x1, y1] = worldToScreen(a[0], a[1]);
+      const [x2, y2] = worldToScreen(b[0], b[1]);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function draw(frame) {
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+      map.walls.forEach((w) => drawLine(w, "#ef4444", 3));
+      drawLine(map.start, "#10b981", 2);
+      drawLine(map.finish, "#f59e0b", 2);
+
+      const { x, y, yaw } = frame.car;
+      const [cx, cy] = worldToScreen(x, y);
+      const radius = 8;
+
+      ctx.fillStyle = "#22d3ee";
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(yaw) * 14, cy - Math.sin(yaw) * 14);
+      ctx.stroke();
+
+      episodeEl.textContent = `episode: ${frame.episode}`;
+      stepEl.textContent = `step: ${frame.step}`;
+      rewardEl.textContent = `reward: ${frame.reward.toFixed(3)} total ${frame.total_reward.toFixed(3)}`;
+      eventEl.textContent = `event: ${frame.event ?? "-"}`;
+    }
+
+    const ws = new WebSocket("ws://127.0.0.1:8765");
+    ws.onopen = () => (statusEl.textContent = "status: connected");
+    ws.onclose = () => (statusEl.textContent = "status: disconnected");
+    ws.onmessage = (ev) => {
+      const frame = JSON.parse(ev.data);
+      draw(frame);
+    };
+  </script>
+</body>
+</html>
