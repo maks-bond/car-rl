@@ -2,6 +2,56 @@
 
 Starter project for reinforcement-learning experiments with a headless bicycle-model car simulator.
 
+## Main Commands
+
+1. Training
+
+```bash
+python3 -m car_rl.apps.train_sb3_ppo \
+  --map straight_corridor \
+  --observation-mode boundary \
+  --timesteps 100000 \
+  --eval-freq 5000 \
+  --eval-episodes 10 \
+  --device cuda
+```
+
+2. Eval
+
+```bash
+python3 -m car_rl.apps.eval_policy \
+  --model runs/<run_name>/best_model.zip \
+  --map straight_corridor \
+  --observation-mode boundary \
+  --episodes 20 \
+  --device cuda
+```
+
+3. Eval With UI
+
+```bash
+python3 -m car_rl.apps.run_viz_policy \
+  --model runs/<run_name>/best_model.zip \
+  --map straight_corridor \
+  --observation-mode boundary \
+  --device cuda
+```
+
+4. Running UI Infrastructure
+
+Terminal A (simulation stream):
+```bash
+python3 -m car_rl.apps.run_viz
+```
+
+Terminal B (static web server):
+```bash
+python3 -m http.server 8080
+```
+
+Open:
+- `http://127.0.0.1:8080/web/`
+
 ## What is included
 
 - Headless simulator (`src/car_rl/core/simulator.py`)
