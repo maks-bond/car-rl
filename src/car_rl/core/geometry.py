@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Optional
 
 
 def _sub(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
@@ -84,3 +85,24 @@ def point_in_convex_polygon(p: tuple[float, float], poly: tuple[tuple[float, flo
                 return False
             sign = -1
     return True
+
+
+def ray_segment_intersection_distance(
+    origin: tuple[float, float],
+    direction: tuple[float, float],
+    seg_a: tuple[float, float],
+    seg_b: tuple[float, float],
+) -> Optional[float]:
+    # Ray: origin + t * direction (t >= 0), direction should be unit-length.
+    # Segment: seg_a + u * (seg_b - seg_a), 0 <= u <= 1.
+    seg = _sub(seg_b, seg_a)
+    denom = _cross(direction, seg)
+    if abs(denom) < 1e-12:
+        return None
+
+    rel = _sub(seg_a, origin)
+    t = _cross(rel, seg) / denom
+    u = _cross(rel, direction) / denom
+    if t >= 0.0 and 0.0 <= u <= 1.0:
+        return t
+    return None

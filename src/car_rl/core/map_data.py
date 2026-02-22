@@ -28,6 +28,7 @@ class TrackMap:
     start_pose: CarState
     start_line: DirectedLine
     finish_line: DirectedLine
+    centerline: list[tuple[float, float]]
 
 
 
@@ -67,4 +68,5 @@ def load_map(path: Union[str, Path]) -> TrackMap:
         start_pose=start_pose,
         start_line=_read_directed_line(data["start_line"]),
         finish_line=_read_directed_line(data["finish_line"]),
+        centerline=[_read_point(p) for p in data.get("centerline", [])],
     )

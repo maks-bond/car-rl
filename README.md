@@ -7,6 +7,7 @@ Starter project for reinforcement-learning experiments with a headless bicycle-m
 - Headless simulator (`src/car_rl/core/simulator.py`)
 - Kinematic bicycle dynamics with action/state limits (`src/car_rl/core/dynamics.py`)
 - Map format and first map (`src/car_rl/maps/straight_corridor.json`)
+- Additional maps: `easy_turn`, `s_curve`, `maze_small`
 - RL-style env wrapper (`src/car_rl/env/environment.py`)
 - Constant action baseline agent (`src/car_rl/agents/constant.py`)
 - Live WebSocket frame stream (`src/car_rl/viz/websocket_stream.py`)
@@ -53,6 +54,21 @@ Run headless simulation:
 PYTHONPATH=src python3 -m car_rl.apps.run_headless
 ```
 
+Run headless with map/agent selection:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.run_headless --map easy_turn --agent engineered --episodes 3
+```
+
+Available maps can be discovered from `src/car_rl/maps/`.
+Available agents:
+- `constant`
+- `engineered` (centerline-following baseline)
+
+Observation modes:
+- `state` (default): returns `x, y, yaw, v, delta`
+- `boundary`: returns boundary-based features only (no `x, y, yaw`)
+
 Run web visualization (2 terminals):
 
 Terminal A (simulation + websocket server):
@@ -97,6 +113,73 @@ The panel also shows:
 - `src/car_rl/maps/`: map files
 - `src/car_rl/viz/`: websocket stream code
 - `web/`: browser renderer UI
+
+## Baseline benchmark
+
+Run constant vs engineered policy over all maps:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.benchmark_agents --episodes 5
+```
+
+Example: run specific maps only:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.benchmark_agents --episodes 5 --maps straight_corridor easy_turn s_curve
+```
+
+## Boundary-based learning features
+
+To run boundary-only observations:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.run_headless --map straight_corridor --agent constant --observation-mode boundary
+```
+
+Boundary observation vector/schema:
+- `v_norm`: normalized speed
+- `delta_norm`: normalized steering angle
+- `ray_distances`: raw wall distances from lidar-style rays
+- `ray_distances_norm`: distances normalized by max ray range
+
+Ray setup:
+- 15 rays
+- 180-degree field of view centered on vehicle heading
+- max range: 20 m
+
+Notes:
+- This mode does not include centerline features.
+- `engineered` agent requires `--observation-mode state`.
+
+## Policy-network input adapter (PPO/SAC-ready)
+
+Use `PolicyInputAdapter` to convert observations into fixed-size `numpy.float32` vectors.
+
+State mode vector (dim = 6):
+- `[x, y, sin_yaw, cos_yaw, v, delta]`
+
+Boundary mode vector (default dim = 17):
+- `[v_norm, delta_norm, ray_00_norm, ..., ray_14_norm]`
+
+Quick inspection command:
+
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.inspect_policy_input --map straight_corridor --observation-mode boundary --steps 3
+```
+
+Python usage:
+
+```python
+from car_rl.apps.common import create_env
+from car_rl.env.features import PolicyInputAdapter
+from car_rl.maps.registry import get_map_path
+
+env = create_env(get_map_path("straight_corridor"), observation_mode="boundary")
+adapter = PolicyInputAdapter(observation_mode="boundary")
+
+obs = env.reset()
+vec = adapter.transform(obs)  # np.ndarray shape: (17,), dtype=float32
+```
 
 ## Troubleshooting
 

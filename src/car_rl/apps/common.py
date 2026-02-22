@@ -7,13 +7,14 @@ from car_rl.core.map_data import load_map
 from car_rl.core.simulator import Simulator
 from car_rl.core.types import RewardConfig, VehicleLimits, VehicleParams
 from car_rl.env.environment import CarEnv
+from car_rl.env.observation import BoundaryObservationBuilder, BoundaryObservationConfig
 
 
 DEFAULT_DT = 0.05
 DEFAULT_MAX_STEPS = 1000
 
 
-def create_env(map_path: Union[str, Path]) -> CarEnv:
+def create_env(map_path: Union[str, Path], observation_mode: str = "state") -> CarEnv:
     track_map = load_map(map_path)
 
     params = VehicleParams(
@@ -46,4 +47,13 @@ def create_env(map_path: Union[str, Path]) -> CarEnv:
         reward_config=rewards,
         dt=DEFAULT_DT,
     )
-    return CarEnv(simulator=simulator, max_steps=DEFAULT_MAX_STEPS)
+    if observation_mode == "state":
+        return CarEnv(simulator=simulator, max_steps=DEFAULT_MAX_STEPS)
+    if observation_mode == "boundary":
+        obs_builder = BoundaryObservationBuilder(
+            track_map=track_map,
+            limits=limits,
+            config=BoundaryObservationConfig(num_rays=15, fov_deg=180.0, max_ray_distance=20.0),
+        )
+        return CarEnv(simulator=simulator, max_steps=DEFAULT_MAX_STEPS, boundary_observer=obs_builder)
+    raise ValueError("observation_mode must be 'state' or 'boundary'")
