@@ -18,7 +18,9 @@ def create_env(map_path: Union[str, Path]) -> CarEnv:
 
     params = VehicleParams(
         wheelbase=2.7,
-        radius=0.35,
+        front_overhang=1.0,
+        rear_overhang=0.95,
+        width=1.65,
     )
     limits = VehicleLimits(
         a_min=-3.0,

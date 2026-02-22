@@ -16,6 +16,7 @@ Starter project for reinforcement-learning experiments with a headless bicycle-m
 
 State:
 - `x, y, yaw, v, delta`
+- Pose convention: `x, y` is the center of the rear axle (not the geometric center of the body)
 
 Control:
 - `a` (acceleration)
@@ -35,35 +36,73 @@ Dynamics:
 - Start line crossed backward direction: `-100` and terminate
 - Step penalty: `-0.01`
 
-## Run
+## Quickstart (Most Important)
 
-Install deps:
+Use Python 3.11+ (recommended) and create a virtual environment:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
 pip install -e .
 ```
 
-Headless rollout:
+Run headless simulation:
 
 ```bash
-PYTHONPATH=src python -m car_rl.apps.run_headless
+PYTHONPATH=src python3 -m car_rl.apps.run_headless
 ```
 
-Live stream for viz:
+Run web visualization (2 terminals):
+
+Terminal A (simulation + websocket server):
+```bash
+PYTHONPATH=src python3 -m car_rl.apps.run_viz
+```
+
+Terminal B (static web server):
 
 ```bash
-PYTHONPATH=src python -m car_rl.apps.run_viz
+python3 -m http.server 8080
 ```
 
-Open viewer in another terminal:
-
-```bash
-python -m http.server 8080
-```
-
-Then open:
+Open in browser:
 
 - `http://127.0.0.1:8080/web/`
+
+## UI controls (web viewer)
+
+- `Step`: execute exactly one simulator step, then pause
+- `Play`: run continuously
+- `Pause`: pause immediately
+- `Play To End`: run until episode termination, then auto-pause before next episode
+
+The panel also shows:
+- episode, step, reward, event
+- control mode
+- speed (`v`)
+- steering angle (`delta`) in degrees
+
+## Collision model
+
+- Collision is checked against the **oriented car body box**, not a point/circle.
+- Car geometry is defined in `VehicleParams` (`wheelbase`, `front_overhang`, `rear_overhang`, `width`).
+
+## Project layout
+
+- `src/car_rl/core/`: dynamics, geometry, map loading, simulator
+- `src/car_rl/env/`: RL-style environment wrapper
+- `src/car_rl/agents/`: baseline agents
+- `src/car_rl/apps/`: runnable entrypoints
+- `src/car_rl/maps/`: map files
+- `src/car_rl/viz/`: websocket stream code
+- `web/`: browser renderer UI
+
+## Troubleshooting
+
+- `python: command not found`: use `python3` in commands.
+- `ModuleNotFoundError: websockets`: activate venv and run `pip install -e .`.
+- No updates in browser: ensure `run_viz` is running and refresh the page.
 
 ## Next steps
 

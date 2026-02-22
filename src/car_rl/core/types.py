@@ -33,7 +33,9 @@ class VehicleLimits:
 @dataclass
 class VehicleParams:
     wheelbase: float
-    radius: float
+    front_overhang: float = 1.0
+    rear_overhang: float = 0.95
+    width: float = 1.65
 
 
 @dataclass

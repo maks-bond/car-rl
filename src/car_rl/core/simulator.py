@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
 from car_rl.core.dynamics import step_bicycle
-from car_rl.core.geometry import dot, point_to_segment_distance, segment_intersects
+from car_rl.core.geometry import dot, point_in_convex_polygon, segment_intersects
 from car_rl.core.map_data import DirectedLine, TrackMap
 from car_rl.core.types import Action, CarState, RewardConfig, VehicleLimits, VehicleParams
 
@@ -70,9 +71,21 @@ class Simulator:
         return StepResult(state=nxt, reward=reward, done=done, event=event)
 
     def _is_collision(self, state: CarState) -> bool:
-        p = (state.x, state.y)
+        car_corners = self._car_corners(state)
+        car_edges = (
+            (car_corners[0], car_corners[1]),
+            (car_corners[1], car_corners[2]),
+            (car_corners[2], car_corners[3]),
+            (car_corners[3], car_corners[0]),
+        )
+
         for wall in self.track_map.walls:
-            if point_to_segment_distance(p, wall.p1, wall.p2) <= self.params.radius:
+            for e1, e2 in car_edges:
+                if segment_intersects(e1, e2, wall.p1, wall.p2):
+                    return True
+
+            # If a wall endpoint lands inside the car body, treat as collision.
+            if point_in_convex_polygon(wall.p1, car_corners) or point_in_convex_polygon(wall.p2, car_corners):
                 return True
         return False
 
@@ -82,3 +95,24 @@ class Simulator:
     def _is_forward_crossing(self, prev: CarState, nxt: CarState, line: DirectedLine) -> bool:
         movement = (nxt.x - prev.x, nxt.y - prev.y)
         return dot(movement, line.forward) > 0.0
+
+    def _car_corners(self, state: CarState) -> tuple[tuple[float, float], ...]:
+        x_rear = -self.params.rear_overhang
+        x_front = self.params.wheelbase + self.params.front_overhang
+        half_w = 0.5 * self.params.width
+
+        return (
+            self._local_to_world(state, x_rear, -half_w),
+            self._local_to_world(state, x_front, -half_w),
+            self._local_to_world(state, x_front, half_w),
+            self._local_to_world(state, x_rear, half_w),
+        )
+
+    @staticmethod
+    def _local_to_world(state: CarState, lx: float, ly: float) -> tuple[float, float]:
+        c = math.cos(state.yaw)
+        s = math.sin(state.yaw)
+        return (
+            state.x + lx * c - ly * s,
+            state.y + lx * s + ly * c,
+        )

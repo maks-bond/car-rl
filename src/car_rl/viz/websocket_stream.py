@@ -14,13 +14,20 @@ class WebSocketFrameStream:
         self.port = port
         self._clients: set[WebSocketServerProtocol] = set()
         self._lock = asyncio.Lock()
+        self._commands: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     async def start(self) -> None:
         async def handler(ws: WebSocketServerProtocol) -> None:
             async with self._lock:
                 self._clients.add(ws)
             try:
-                await ws.wait_closed()
+                async for raw in ws:
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(data, dict):
+                        await self._commands.put(data)
             finally:
                 async with self._lock:
                     self._clients.discard(ws)
@@ -35,3 +42,11 @@ class WebSocketFrameStream:
         if not clients:
             return
         await asyncio.gather(*(c.send(msg) for c in clients), return_exceptions=True)
+
+    def drain_commands(self) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        while True:
+            try:
+                out.append(self._commands.get_nowait())
+            except asyncio.QueueEmpty:
+                return out

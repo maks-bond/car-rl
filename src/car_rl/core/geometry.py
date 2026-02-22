@@ -49,3 +49,38 @@ def point_to_segment_distance(
     t = max(0.0, min(1.0, t))
     closest = (a[0] + t * ab[0], a[1] + t * ab[1])
     return math.hypot(p[0] - closest[0], p[1] - closest[1])
+
+
+def _orientation(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+    return _cross(_sub(b, a), _sub(c, a))
+
+
+def _on_segment(a: tuple[float, float], b: tuple[float, float], p: tuple[float, float]) -> bool:
+    eps = 1e-12
+    return (
+        min(a[0], b[0]) - eps <= p[0] <= max(a[0], b[0]) + eps
+        and min(a[1], b[1]) - eps <= p[1] <= max(a[1], b[1]) + eps
+    )
+
+
+def point_in_convex_polygon(p: tuple[float, float], poly: tuple[tuple[float, float], ...]) -> bool:
+    # Works for CW or CCW convex polygons; points on edge are considered inside.
+    if len(poly) < 3:
+        return False
+
+    sign = 0
+    for i in range(len(poly)):
+        a = poly[i]
+        b = poly[(i + 1) % len(poly)]
+        o = _orientation(a, b, p)
+        if abs(o) < 1e-12 and _on_segment(a, b, p):
+            return True
+        if o > 0:
+            if sign < 0:
+                return False
+            sign = 1
+        elif o < 0:
+            if sign > 0:
+                return False
+            sign = -1
+    return True
